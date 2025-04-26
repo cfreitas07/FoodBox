@@ -13,14 +13,58 @@
 #define GC9A01A_WHITE   0xFFFF
 #define GC9A01A_BLACK   0x0000
 #define GC9A01A_YELLOW  0xFFE0
+#define GC9A01A_BROWN   0xA145
+#define GC9A01A_DARK_BLUE 0x0008
+#define GC9A01A_LIGHT_BLUE 0x07FF
 
 // 100% bigger than before
-#define ICON_SCALE 4    // was 2, now doubled
+#define ICON_SCALE 3    // was 2, now doubled
 #define TITLE_FONT   6  // was 3, now doubled
 
 GigaDisplay_GFX     tft;
 Adafruit_SHT4x      sht4;
 Adafruit_VEML7700   veml;
+
+// Draw a thermometer icon
+void drawThermometer(int16_t x, int16_t y, uint16_t color) {
+  int16_t width = 8 * ICON_SCALE;
+  int16_t height = 20 * ICON_SCALE;
+  int16_t bulb = 12 * ICON_SCALE;
+  
+  // Draw the bulb
+  tft.fillCircle(x, y + height, bulb/2, color);
+  // Draw the stem
+  tft.fillRect(x - width/2, y, width, height, color);
+  // Draw the mercury
+  tft.fillRect(x - width/4, y + height/4, width/2, height/2, GC9A01A_RED);
+}
+
+// Draw a water drop icon
+void drawWaterDrop(int16_t x, int16_t y, uint16_t color) {
+  int16_t size = 15 * ICON_SCALE;
+  tft.fillTriangle(x, y, x - size/2, y + size, x + size/2, y + size, color);
+  tft.fillCircle(x, y + size/2, size/4, color);
+}
+
+// Draw a sun icon
+void drawSun(int16_t x, int16_t y, uint16_t color) {
+  int16_t size = 15 * ICON_SCALE;
+  tft.fillCircle(x, y, size/2, color);
+  // Draw rays
+  for(int i = 0; i < 8; i++) {
+    float angle = i * PI / 4;
+    int16_t x1 = x + cos(angle) * size;
+    int16_t y1 = y + sin(angle) * size;
+    tft.drawLine(x, y, x1, y1, color);
+  }
+}
+
+// Draw a soil/plant icon
+void drawSoil(int16_t x, int16_t y, uint16_t color) {
+  tft.fillRect(x-10, y+10, 20, 8, GC9A01A_BROWN); // soil
+  tft.fillCircle(x, y, 8, color); // plant
+  tft.drawLine(x, y+8, x, y+14, GC9A01A_GREEN); // stem
+}
 
 void drawSeedling(int16_t x, int16_t y, uint16_t color) {
   int16_t rad     = 5 * ICON_SCALE;
@@ -28,6 +72,18 @@ void drawSeedling(int16_t x, int16_t y, uint16_t color) {
   tft.drawLine(x, y + rad, x, y + rad + stemLen, color);
   tft.fillCircle(x - rad, y + rad + stemLen/2, rad, color);
   tft.fillCircle(x + rad, y + rad + stemLen/2, rad, color);
+}
+
+// Draw a gradient background
+void drawGradientBackground() {
+  for(int y = 0; y < tft.height(); y++) {
+    uint16_t color = tft.color565(
+      0,
+      0,
+      map(y, 0, tft.height(), 0, 255)
+    );
+    tft.drawFastHLine(0, y, tft.width(), color);
+  }
 }
 
 void setup() {
@@ -47,59 +103,79 @@ void loop() {
   sht4.getEvent(&h_event, &t_event);
   float lux = veml.readLux();
 
-  // 2) clear the screen
-  tft.fillScreen(GC9A01A_BLACK);
+  // 2) clear the screen and draw gradient
+  drawGradientBackground();
 
-  // 3) header: "FoodBox" above, seedling below
-  // measure "FoodBox"
+  // 3) Draw border
+  tft.drawRect(0, 0, tft.width(), tft.height(), GC9A01A_WHITE);
+  tft.drawRect(1, 1, tft.width()-2, tft.height()-2, GC9A01A_WHITE);
+
+  // 4) header: "FoodBox" and seedling in top right
   tft.setTextColor(GC9A01A_WHITE);
   tft.setTextSize(TITLE_FONT);
   int16_t x0, y0; uint16_t w, h;
   tft.getTextBounds("FoodBox", 0, 0, &x0, &y0, &w, &h);
 
-  // position at top-right with 10px margin
-  int16_t textX = tft.width() - w - 10;
-  int16_t textY = 5;
+  // position at top-right with margin
+  int16_t textX = tft.width() - w - 20;
+  int16_t textY = 20;
   tft.setCursor(textX, textY);
   tft.print("FoodBox");
 
   // seedling centered under the text
   int16_t iconX = textX + w/2;
-  int16_t iconY = textY + h + 5;  // 5px padding
+  int16_t iconY = textY + h + 10;  // 10px padding
   drawSeedling(iconX, iconY, GC9A01A_GREEN);
 
-  // 4) three big data bands
-  uint16_t band = tft.height() / 3;
+  // 5) Calculate available space for data bands
+  uint16_t headerHeight = iconY + 40; // Total height of header section
+  uint16_t availableHeight = tft.height() - headerHeight - 20; // 20px bottom margin
+  uint16_t band = availableHeight / 4;
+  uint16_t startY = headerHeight + 10; // 10px padding after header
 
   // — Temp band —
   tft.setTextColor(GC9A01A_CYAN);
   tft.setTextSize(3);
-  tft.setCursor(10, band/4);
-  tft.print("Temp");
+  tft.setCursor(60, startY + band/4);
+  tft.print("Temperature");
+  drawThermometer(30, startY + band/4, GC9A01A_CYAN);
   tft.setTextSize(6);
-  tft.setCursor(10, band/2);
+  tft.setCursor(60, startY + band/2);
   tft.print(t_event.temperature, 1);
   tft.print(" C");
 
   // — Humidity band —
   tft.setTextColor(GC9A01A_GREEN);
   tft.setTextSize(3);
-  tft.setCursor(10, band + band/4);
-  tft.print("Hum");
+  tft.setCursor(60, startY + band + band/4);
+  tft.print("Humidity");
+  drawWaterDrop(30, startY + band + band/4, GC9A01A_GREEN);
   tft.setTextSize(6);
-  tft.setCursor(10, band + band/2);
+  tft.setCursor(60, startY + band + band/2);
   tft.print(h_event.relative_humidity, 1);
   tft.print(" %");
 
   // — Light band —
   tft.setTextColor(GC9A01A_YELLOW);
   tft.setTextSize(3);
-  tft.setCursor(10, 2*band + band/4);
+  tft.setCursor(60, startY + 2*band + band/4);
   tft.print("Light");
+  drawSun(30, startY + 2*band + band/4, GC9A01A_YELLOW);
   tft.setTextSize(6);
-  tft.setCursor(10, 2*band + band/2);
+  tft.setCursor(60, startY + 2*band + band/2);
   tft.print((int)lux);
   tft.print(" lx");
+
+  // Soil Moisture (placeholder)
+  int ySoil = startY + 3*band + band/2;
+  drawSoil(30, ySoil, GC9A01A_GREEN);
+  tft.setTextColor(GC9A01A_MAGENTA);
+  tft.setTextSize(3);
+  tft.setCursor(60, ySoil);
+  tft.print("Soil");
+  tft.setTextSize(4);
+  tft.setCursor(200, ySoil);
+  tft.print("-- %"); // Placeholder for future sensor
 
   delay(2000);
 }
