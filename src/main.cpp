@@ -36,6 +36,9 @@ bool refreshBtnPressed = false;
 bool lastRefreshBtnPressed = false;
 unsigned long refreshBtnLastPress = 0;
 
+bool sht4_connected = false;
+bool veml_connected = false;
+
 // Draw a thermometer icon
 void drawThermometer(int16_t x, int16_t y, uint16_t color) {
   int16_t width = 8 * ICON_SCALE;
@@ -117,12 +120,118 @@ bool isRefreshButtonTouched(int16_t tx, int16_t ty) {
   return (tx > tft.width()/2); // Button is right half of screen
 }
 
+void tryInitSensors() {
+  sht4_connected = sht4.begin(&Wire1);
+  veml_connected = veml.begin(&Wire1);
+}
+
+void drawStaticUI() {
+  drawGradientBackground();
+  tft.drawRect(0, 0, tft.width(), tft.height(), GC9A01A_WHITE);
+  tft.drawRect(1, 1, tft.width()-2, tft.height()-2, GC9A01A_WHITE);
+
+  // Header
+  tft.setTextColor(GC9A01A_WHITE);
+  tft.setTextSize(TITLE_FONT);
+  int16_t x0, y0; uint16_t w, h;
+  tft.getTextBounds("FoodBox", 0, 0, &x0, &y0, &w, &h);
+  int16_t textX = tft.width() - w - 20;
+  int16_t textY = 20;
+  tft.setCursor(textX, textY);
+  tft.print("FoodBox");
+  int16_t iconX = textX + w/2;
+  int16_t iconY = textY + h + 10;
+  drawSeedling(iconX, iconY, GC9A01A_GREEN);
+
+  // Calculate y-coordinates for value bands
+  int bandHeight = 40;
+  int extraSpacing = 65;
+  int firstBandY = iconY + 20;
+  int yTemp = firstBandY;
+  int yHum = yTemp + bandHeight + extraSpacing;
+  int yLight = yHum + bandHeight + extraSpacing;
+  int ySoil = yLight + bandHeight + extraSpacing;
+  int iconColX = 30;
+  int labelColX = 70;
+
+  // Temperature
+  drawThermometer(iconColX, yTemp, GC9A01A_CYAN);
+  tft.setTextColor(GC9A01A_CYAN);
+  tft.setTextSize(3);
+  tft.setCursor(labelColX, yTemp);
+  tft.print("Temp");
+
+  // Humidity
+  drawWaterDrop(iconColX, yHum, GC9A01A_GREEN);
+  tft.setTextColor(GC9A01A_GREEN);
+  tft.setTextSize(3);
+  tft.setCursor(labelColX, yHum);
+  tft.print("Humidity");
+
+  // Light
+  drawSun(iconColX, yLight, GC9A01A_YELLOW);
+  tft.setTextColor(GC9A01A_YELLOW);
+  tft.setTextSize(3);
+  tft.setCursor(labelColX, yLight);
+  tft.print("Light");
+
+  // Soil (placeholder)
+  drawSoil(iconColX, ySoil, GC9A01A_GREEN);
+  tft.setTextColor(GC9A01A_MAGENTA);
+  tft.setTextSize(3);
+  tft.setCursor(labelColX, ySoil);
+  tft.print("Soil");
+}
+
+void updateValues(float temp, float hum, float lux, bool sht4_connected, bool veml_connected, int yTemp, int yHum, int yLight, int ySoil) {
+  int valueColX = 260;
+
+  // Temperature
+  tft.fillRect(valueColX, yTemp, 120, 50, GC9A01A_BLACK);
+  tft.setTextColor(GC9A01A_CYAN);
+  tft.setTextSize(6);
+  tft.setCursor(valueColX, yTemp);
+  if (sht4_connected && !isnan(temp)) {
+    tft.print(temp, 1); tft.print(" C");
+  } else {
+    tft.print("--");
+  }
+
+  // Humidity
+  tft.fillRect(valueColX, yHum, 120, 50, GC9A01A_BLACK);
+  tft.setTextColor(GC9A01A_GREEN);
+  tft.setTextSize(6);
+  tft.setCursor(valueColX, yHum);
+  if (sht4_connected && !isnan(hum)) {
+    tft.print(hum, 1); tft.print(" %");
+  } else {
+    tft.print("--");
+  }
+
+  // Light
+  tft.fillRect(valueColX, yLight, 120, 50, GC9A01A_BLACK);
+  tft.setTextColor(GC9A01A_YELLOW);
+  tft.setTextSize(6);
+  tft.setCursor(valueColX, yLight);
+  if (veml_connected && !isnan(lux)) {
+    tft.print((int)lux); tft.print(" lx");
+  } else {
+    tft.print("--");
+  }
+
+  // Soil (placeholder)
+  tft.fillRect(valueColX, ySoil, 120, 50, GC9A01A_BLACK);
+  tft.setTextColor(GC9A01A_MAGENTA);
+  tft.setTextSize(6);
+  tft.setCursor(valueColX, ySoil);
+  tft.print("-- %");
+}
+
 void setup() {
   Serial.begin(115200);
   Wire1.begin();
 
-  sht4.begin(&Wire1);
-  veml.begin(&Wire1);
+  tryInitSensors();
 
   tft.begin();
   tft.setRotation(1);
@@ -140,112 +249,75 @@ void loop() {
   GDTpoint_t points[5];
   contacts = touchDetector.getTouchPoints(points);
   refreshBtnPressed = false; // Reset at start of loop
+  static bool lastRefreshBtnState = false;
+  bool doRefresh = false;
   if (contacts > 0) {
     int16_t tx = points[0].y;
     int16_t ty = points[0].x;
-    // Debug: print touch coordinates
-    Serial.print("Touch: ");
-    Serial.print(tx);
-    Serial.print(", ");
-    Serial.println(ty);
     if (isRefreshButtonTouched(tx, ty)) {
       refreshBtnPressed = true;
+      if (!lastRefreshBtnState) doRefresh = true; // Only trigger on new press
     }
+  }
+  lastRefreshBtnState = refreshBtnPressed;
+
+  // If refresh button pressed, try to re-init sensors
+  if (doRefresh) {
+    sht4_connected = sht4.begin(&Wire1);
+    veml_connected = veml.begin(&Wire1);
   }
 
   // 1) read sensors
   sensors_event_t h_event, t_event;
-  sht4.getEvent(&h_event, &t_event);
-  float lux = veml.readLux();
+  float temp = NAN, hum = NAN, lux = NAN;
 
-  // 2) clear the screen and draw gradient
-  drawGradientBackground();
+  // Only call getEvent if sensor is marked as connected
+  if (sht4_connected) {
+    if (!sht4.getEvent(&h_event, &t_event)) {
+      sht4_connected = false; // Mark as disconnected if call fails
+    } else {
+      temp = t_event.temperature;
+      hum = h_event.relative_humidity;
+    }
+  }
+  if (veml_connected) {
+    lux = veml.readLux();
+    if (isnan(lux) || lux == 0) {
+      // Optionally, try to mark as disconnected if you know the failure mode
+      // veml_connected = false;
+    }
+  }
 
-  // 3) Draw border
-  tft.drawRect(0, 0, tft.width(), tft.height(), GC9A01A_WHITE);
-  tft.drawRect(1, 1, tft.width()-2, tft.height()-2, GC9A01A_WHITE);
+  static bool needFullRedraw = true;
+  if (doRefresh) {
+    tryInitSensors();
+    needFullRedraw = true;
+  }
 
-  // 4) header: "FoodBox" and seedling in top right
-  tft.setTextColor(GC9A01A_WHITE);
+  // Calculate y-coordinates for value bands
+  // Header calculation (must match drawStaticUI)
   tft.setTextSize(TITLE_FONT);
   int16_t x0, y0; uint16_t w, h;
   tft.getTextBounds("FoodBox", 0, 0, &x0, &y0, &w, &h);
-
-  // position at top-right with margin
   int16_t textX = tft.width() - w - 20;
   int16_t textY = 20;
-  tft.setCursor(textX, textY);
-  tft.print("FoodBox");
-
-  // seedling centered under the text
   int16_t iconX = textX + w/2;
-  int16_t iconY = textY + h + 10;  // 10px padding
-  drawSeedling(iconX, iconY, GC9A01A_GREEN);
-
-  // 5) Calculate available space for data bands
-  uint16_t headerHeight = iconY + 40; // Total height of header section
-  uint16_t availableHeight = tft.height() - headerHeight - 20; // 20px bottom margin
-  uint16_t band = availableHeight / 4;
-  uint16_t startY = headerHeight + 10; // 10px padding after header
-
-  // --- Data bands: start just below header/logo, icons left, values right ---
-  const int bandCount = 4;
-  int bandHeight = 40; // Fixed height for each band
-  int extraSpacing = 65; // Extra space between bands
-  int iconColX = 30;
-  int labelColX = 70;
-  int valueColX = 260;
-  int firstBandY = iconY + 20; // Start just below the logo, with a small margin
-
-  // Temperature
+  int16_t iconY = textY + h + 10;
+  int bandHeight = 40;
+  int extraSpacing = 65;
+  int firstBandY = iconY + 20;
   int yTemp = firstBandY;
-  drawThermometer(iconColX, yTemp, GC9A01A_CYAN);
-  tft.setTextColor(GC9A01A_CYAN);
-  tft.setTextSize(3);
-  tft.setCursor(labelColX, yTemp);
-  tft.print("Temp");
-  tft.setTextSize(6);
-  tft.setCursor(valueColX, yTemp);
-  tft.print(t_event.temperature, 1);
-  tft.print(" C");
-
-  // Humidity
   int yHum = yTemp + bandHeight + extraSpacing;
-  drawWaterDrop(iconColX, yHum, GC9A01A_GREEN);
-  tft.setTextColor(GC9A01A_GREEN);
-  tft.setTextSize(3);
-  tft.setCursor(labelColX, yHum);
-  tft.print("Humidity");
-  tft.setTextSize(6);
-  tft.setCursor(valueColX, yHum);
-  tft.print(h_event.relative_humidity, 1);
-  tft.print(" %");
-
-  // Light
   int yLight = yHum + bandHeight + extraSpacing;
-  drawSun(iconColX, yLight, GC9A01A_YELLOW);
-  tft.setTextColor(GC9A01A_YELLOW);
-  tft.setTextSize(3);
-  tft.setCursor(labelColX, yLight);
-  tft.print("Light");
-  tft.setTextSize(6);
-  tft.setCursor(valueColX, yLight);
-  tft.print((int)lux);
-  tft.print(" lx");
-
-  // Soil Moisture (placeholder)
   int ySoil = yLight + bandHeight + extraSpacing;
-  drawSoil(iconColX, ySoil, GC9A01A_GREEN);
-  tft.setTextColor(GC9A01A_MAGENTA);
-  tft.setTextSize(3);
-  tft.setCursor(labelColX, ySoil);
-  tft.print("Soil");
-  tft.setTextSize(6);
-  tft.setCursor(valueColX, ySoil);
-  tft.print("-- %"); // Placeholder for future sensor
 
-  // Always draw the button last so it appears on top
+  if (needFullRedraw) {
+    drawStaticUI();
+    needFullRedraw = false;
+  }
+
+  updateValues(temp, hum, lux, sht4_connected, veml_connected, yTemp, yHum, yLight, ySoil);
   drawRefreshButton(refreshBtnPressed);
 
-  delay(100); // Optionally, increase for less flicker
+  delay(100);
 }
