@@ -133,48 +133,60 @@ void loop() {
   uint16_t band = availableHeight / 4;
   uint16_t startY = headerHeight + 10; // 10px padding after header
 
-  // — Temp band —
+  // --- Data bands: start just below header/logo, icons left, values right ---
+  const int bandCount = 4;
+  int bandHeight = 40; // Fixed height for each band
+  int extraSpacing = 65; // Extra space between bands
+  int iconColX = 30;
+  int labelColX = 70;
+  int valueColX = 260;
+  int firstBandY = iconY + 20; // Start just below the logo, with a small margin
+
+  // Temperature
+  int yTemp = firstBandY;
+  drawThermometer(iconColX, yTemp, GC9A01A_CYAN);
   tft.setTextColor(GC9A01A_CYAN);
   tft.setTextSize(3);
-  tft.setCursor(60, startY + band/4);
-  tft.print("Temperature");
-  drawThermometer(30, startY + band/4, GC9A01A_CYAN);
+  tft.setCursor(labelColX, yTemp);
+  tft.print("Temp");
   tft.setTextSize(6);
-  tft.setCursor(60, startY + band/2);
+  tft.setCursor(valueColX, yTemp);
   tft.print(t_event.temperature, 1);
   tft.print(" C");
 
-  // — Humidity band —
+  // Humidity
+  int yHum = yTemp + bandHeight + extraSpacing;
+  drawWaterDrop(iconColX, yHum, GC9A01A_GREEN);
   tft.setTextColor(GC9A01A_GREEN);
   tft.setTextSize(3);
-  tft.setCursor(60, startY + band + band/4);
+  tft.setCursor(labelColX, yHum);
   tft.print("Humidity");
-  drawWaterDrop(30, startY + band + band/4, GC9A01A_GREEN);
   tft.setTextSize(6);
-  tft.setCursor(60, startY + band + band/2);
+  tft.setCursor(valueColX, yHum);
   tft.print(h_event.relative_humidity, 1);
   tft.print(" %");
 
-  // — Light band —
+  // Light
+  int yLight = yHum + bandHeight + extraSpacing;
+  drawSun(iconColX, yLight, GC9A01A_YELLOW);
   tft.setTextColor(GC9A01A_YELLOW);
   tft.setTextSize(3);
-  tft.setCursor(60, startY + 2*band + band/4);
+  tft.setCursor(labelColX, yLight);
   tft.print("Light");
-  drawSun(30, startY + 2*band + band/4, GC9A01A_YELLOW);
   tft.setTextSize(6);
-  tft.setCursor(60, startY + 2*band + band/2);
+  tft.setCursor(valueColX, yLight);
   tft.print((int)lux);
   tft.print(" lx");
 
   // Soil Moisture (placeholder)
-  int ySoil = startY + 3*band + band/2;
-  drawSoil(30, ySoil, GC9A01A_GREEN);
+  int ySoil = yLight + bandHeight + extraSpacing;
+  drawSoil(iconColX, ySoil, GC9A01A_GREEN);
   tft.setTextColor(GC9A01A_MAGENTA);
   tft.setTextSize(3);
-  tft.setCursor(60, ySoil);
+  tft.setCursor(labelColX, ySoil);
   tft.print("Soil");
-  tft.setTextSize(4);
-  tft.setCursor(200, ySoil);
+  tft.setTextSize(6);
+  tft.setCursor(valueColX, ySoil);
   tft.print("-- %"); // Placeholder for future sensor
 
   delay(2000);
