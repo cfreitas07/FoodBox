@@ -33,6 +33,7 @@ Arduino_GigaDisplayTouch touchDetector;
 #define REFRESH_BTN_MARGIN 20
 
 bool refreshBtnPressed = false;
+bool lastRefreshBtnPressed = false;
 unsigned long refreshBtnLastPress = 0;
 
 // Draw a thermometer icon
@@ -113,9 +114,7 @@ void drawRefreshButton(bool pressed) {
 }
 
 bool isRefreshButtonTouched(int16_t tx, int16_t ty) {
-  int btnX = tft.width() - REFRESH_BTN_W - REFRESH_BTN_MARGIN;
-  int btnY = tft.height() - REFRESH_BTN_H - REFRESH_BTN_MARGIN;
-  return (tx >= btnX && tx <= btnX + REFRESH_BTN_W && ty >= btnY && ty <= btnY + REFRESH_BTN_H);
+  return (tx > tft.width()/2); // Button is right half of screen
 }
 
 void setup() {
@@ -128,6 +127,11 @@ void setup() {
   tft.begin();
   tft.setRotation(1);
   touchDetector.begin();
+
+  int btnX = tft.width() - REFRESH_BTN_W - REFRESH_BTN_MARGIN;
+  int btnY = tft.height() - REFRESH_BTN_H - REFRESH_BTN_MARGIN;
+  Serial.print("Button X: "); Serial.print(btnX); Serial.print(" to "); Serial.println(btnX + REFRESH_BTN_W);
+  Serial.print("Button Y: "); Serial.print(btnY); Serial.print(" to "); Serial.println(btnY + REFRESH_BTN_H);
 }
 
 void loop() {
@@ -135,16 +139,18 @@ void loop() {
   uint8_t contacts;
   GDTpoint_t points[5];
   contacts = touchDetector.getTouchPoints(points);
+  refreshBtnPressed = false; // Reset at start of loop
   if (contacts > 0) {
-    int16_t tx = points[0].x;
-    int16_t ty = points[0].y;
+    int16_t tx = points[0].y;
+    int16_t ty = points[0].x;
+    // Debug: print touch coordinates
+    Serial.print("Touch: ");
+    Serial.print(tx);
+    Serial.print(", ");
+    Serial.println(ty);
     if (isRefreshButtonTouched(tx, ty)) {
       refreshBtnPressed = true;
-      refreshBtnLastPress = millis();
     }
-  }
-  if (refreshBtnPressed && millis() - refreshBtnLastPress > 500) {
-    refreshBtnPressed = false;
   }
 
   // 1) read sensors
@@ -238,8 +244,8 @@ void loop() {
   tft.setCursor(valueColX, ySoil);
   tft.print("-- %"); // Placeholder for future sensor
 
-  // Draw the refresh button last so it's always on top
+  // Always draw the button last so it appears on top
   drawRefreshButton(refreshBtnPressed);
 
-  delay(100); // Faster refresh for button responsiveness
+  delay(100); // Optionally, increase for less flicker
 }
