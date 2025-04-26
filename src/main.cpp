@@ -3,6 +3,7 @@
 #include "Adafruit_SHT4x.h"
 #include "Adafruit_VEML7700.h"
 #include <Arduino_GigaDisplay_GFX.h>
+#include <Arduino_GigaDisplayTouch.h>
 
 // ——— Color definitions ———
 #define GC9A01A_CYAN    0x07FF
@@ -24,6 +25,15 @@
 GigaDisplay_GFX     tft;
 Adafruit_SHT4x      sht4;
 Adafruit_VEML7700   veml;
+Arduino_GigaDisplayTouch touchDetector;
+
+// Button parameters
+#define REFRESH_BTN_W 180   // Increased width
+#define REFRESH_BTN_H 70    // Increased height
+#define REFRESH_BTN_MARGIN 20
+
+bool refreshBtnPressed = false;
+unsigned long refreshBtnLastPress = 0;
 
 // Draw a thermometer icon
 void drawThermometer(int16_t x, int16_t y, uint16_t color) {
@@ -86,6 +96,28 @@ void drawGradientBackground() {
   }
 }
 
+void drawRefreshButton(bool pressed) {
+  int btnX = tft.width() - REFRESH_BTN_W - REFRESH_BTN_MARGIN;
+  int btnY = tft.height() - REFRESH_BTN_H - REFRESH_BTN_MARGIN;
+  uint16_t btnColor = pressed ? GC9A01A_RED : GC9A01A_GREEN;
+  tft.fillRoundRect(btnX, btnY, REFRESH_BTN_W, REFRESH_BTN_H, 12, btnColor);
+  tft.drawRoundRect(btnX, btnY, REFRESH_BTN_W, REFRESH_BTN_H, 12, GC9A01A_WHITE);
+  tft.setTextColor(GC9A01A_BLACK);
+  tft.setTextSize(3);
+  int16_t x1, y1; uint16_t w, h;
+  tft.getTextBounds("Refresh", 0, 0, &x1, &y1, &w, &h);
+  int textX = btnX + (REFRESH_BTN_W - w) / 2;
+  int textY = btnY + (REFRESH_BTN_H - h) / 2;
+  tft.setCursor(textX, textY);
+  tft.print("Refresh");
+}
+
+bool isRefreshButtonTouched(int16_t tx, int16_t ty) {
+  int btnX = tft.width() - REFRESH_BTN_W - REFRESH_BTN_MARGIN;
+  int btnY = tft.height() - REFRESH_BTN_H - REFRESH_BTN_MARGIN;
+  return (tx >= btnX && tx <= btnX + REFRESH_BTN_W && ty >= btnY && ty <= btnY + REFRESH_BTN_H);
+}
+
 void setup() {
   Serial.begin(115200);
   Wire1.begin();
@@ -95,9 +127,26 @@ void setup() {
 
   tft.begin();
   tft.setRotation(1);
+  touchDetector.begin();
 }
 
 void loop() {
+  // Touch handling
+  uint8_t contacts;
+  GDTpoint_t points[5];
+  contacts = touchDetector.getTouchPoints(points);
+  if (contacts > 0) {
+    int16_t tx = points[0].x;
+    int16_t ty = points[0].y;
+    if (isRefreshButtonTouched(tx, ty)) {
+      refreshBtnPressed = true;
+      refreshBtnLastPress = millis();
+    }
+  }
+  if (refreshBtnPressed && millis() - refreshBtnLastPress > 500) {
+    refreshBtnPressed = false;
+  }
+
   // 1) read sensors
   sensors_event_t h_event, t_event;
   sht4.getEvent(&h_event, &t_event);
@@ -189,5 +238,8 @@ void loop() {
   tft.setCursor(valueColX, ySoil);
   tft.print("-- %"); // Placeholder for future sensor
 
-  delay(2000);
+  // Draw the refresh button last so it's always on top
+  drawRefreshButton(refreshBtnPressed);
+
+  delay(100); // Faster refresh for button responsiveness
 }
